@@ -3,7 +3,7 @@ import os
 import csv
 import random
 import numpy as np
-from numpy.core.fromnumeric import transpose
+# from numpy.core.fromnumeric import transpose
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from scipy import interpolate
@@ -13,14 +13,15 @@ import torch.utils.data as data
 import logging
 import torch
 
+# done with local
 # from config import config
 
 class CMAPSS():
     def __init__(self, data_root, data_set, max_rul, seq_len):
         # load params
-        self.data_root = data_root
-        self.data_set = data_set
-        self.max_rul = max_rul
+        self.data_root = data_root  # path to data directory
+        self.data_set = data_set  # name of data set
+        self.max_rul = max_rul   # max RUL value cap ?
         self.seq_len = seq_len
         self.column_names = ['id', 'cycle', 'setting1', 'setting2', 'setting3', 's1', 's2', 's3',
                              's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14',
@@ -28,7 +29,8 @@ class CMAPSS():
         self.mode = None
         self.val_fold = 0
         # load CMAPSS_data
-        self.train_data_df, self.test_data_df, self.test_truth = self._get_data(data_root=data_root, data_set=data_set)
+        self.train_data_df, self.test_data_df, self.test_truth = self._get_data(data_root=data_root, data_set=data_set) 
+        # helper function (get data)  to load raw data from txt files
 
 
         self.train_x, self.train_y, self.test_x, self.test_y = self._process(self.train_data_df, self.test_data_df, self.test_truth)
@@ -39,6 +41,7 @@ class CMAPSS():
 
 
     def _get_data(self, data_root, data_set):
+        # helper function to load raw data from txt files from my local directory
 
         train_data_pt = os.path.join(data_root, 'CMAPSSData', 'train_' + data_set + '.txt')
         assert os.path.exists(train_data_pt), 'data path does not exist: {:}'.format(train_data_pt)
@@ -326,5 +329,8 @@ class CMAPSS():
 if __name__ == "__main__":
 
 
-    ROOT_PATH = r"Datasets"
+    ROOT_PATH = os.path.join("C:\\Monash\\Research_Intern\\RUL_brenchmark\\Frank-Wang-oss-GNN_RUL_Benchmarking\\Data_Process", "Datasets")
     data = CMAPSS(ROOT_PATH, data_set='FD004', max_rul=125, seq_len=50)
+
+
+# C:\Monash\Research_Intern\RUL_brenchmark\Frank-Wang-oss-GNN_RUL_Benchmarking\Data_Process\Datasets
