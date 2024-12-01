@@ -8,7 +8,6 @@ import gc
 import os
 import json
 import logging
-import sys
 import h5py
 import time
 from sklearn import preprocessing
@@ -263,5 +262,6 @@ class NCMAPSS():
 
 
 if __name__ == "__main__":
-    ROOT_PATH = r"Datasets"
+
+    ROOT_PATH = os.path.join(r"C:\Monash\Research_Intern\RUL_brenchmark\Frank-Wang-oss-GNN_RUL_Benchmarking\Data_Process", "Datasets")
     data = NCMAPSS(ROOT_PATH, window_size=50, stride=1, subsampling=100)
