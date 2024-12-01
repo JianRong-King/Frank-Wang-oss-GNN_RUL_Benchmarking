@@ -164,6 +164,6 @@ class XJTU_SY():
 
 if __name__ == "__main__":
 
-    ROOT_PATH = r"Datasets"
+    ROOT_PATH = os.path.join(r"C:\Monash\Research_Intern\RUL_brenchmark\Frank-Wang-oss-GNN_RUL_Benchmarking\Data_Process", "Datasets")
     for i in range(1,4):
         data = XJTU_SY(ROOT_PATH, condition_no=i, augment = False, downsampling = 1, augment_ratio = 4)
