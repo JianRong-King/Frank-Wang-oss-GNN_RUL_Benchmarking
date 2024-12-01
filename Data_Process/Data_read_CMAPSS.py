@@ -16,6 +16,15 @@ import torch
 # done with local
 # from config import config
 
+
+# Description: This script is used to process the CMAPSS data set and save it in a format that can be used by the model
+
+# bez we want to  process and predict unknown rul while the engine is still running for future engine health monitoring
+# To do that we can use past data (Time sereis problem thats why)
+# cuz we have the past data and know when the engine will fail and thus know the RUL at each timestep
+# we can then use this data to train the model to predict the RUL at each timestep
+
+
 class CMAPSS():
     def __init__(self, data_root, data_set, max_rul, seq_len):
         # load params
@@ -68,30 +77,51 @@ class CMAPSS():
         return train_data_df, test_data_df, test_truth
 
     def _process(self, train_df, test_df, test_truth):
-
         # process train data
-        train_rul = pd.DataFrame(train_df.groupby('id')['cycle'].max()).reset_index()
-        train_rul.columns = ['id', 'max']
-        train_df = train_df.merge(train_rul, on=['id'], how='left')
-        train_y = pd.DataFrame(data=[train_df['max'] - train_df['cycle']]).T
+        # to find the maximum cycle for each engine and merge it with the train data
+        # as well as calculate the RUL at each time step
+        train_rul = pd.DataFrame(train_df.groupby('id')['cycle'].max()).reset_index() # cycle there means time step 
+        train_rul.columns = ['id', 'max']  # add column name
+        train_df = train_df.merge(train_rul, on=['id'], how='left')  # merge the max column to the train data
+        train_y = pd.DataFrame(data=[train_df['max'] - train_df['cycle']]).T  # calculate the RUL at each time step
 
+
+        # drop the max as not needed anymore
         train_df.drop('max', axis=1, inplace=True)
+
+        # drop some columns of sensor (  Some sensors may not be directly affected by degradation mode ???) maybe these sensor are not important factors to RUL
         train_df.drop(['s1', 's5', 's6', 's10', 's16', 's18', 's19'], axis=1, inplace=True)
 
+
+        # rounding the setting1 column to 1 decimal place
         train_df['setting1'] = train_df['setting1'].round(1)
+
 
         train_y = train_y.apply(lambda x: [y if y <= self.max_rul else self.max_rul for y in x])
         train_engine_num = train_df['id'].nunique()
         logging.info("CMPDataIter:: iterator initialized (train engine number: {:})".format(train_engine_num))
 
-        # process test data
-        test_rul = pd.DataFrame(test_df.groupby('id')['cycle'].max()).reset_index()
-        test_rul.columns = ['id', 'max']
 
-        test_truth.columns = ['more']
-        test_truth['id'] = test_truth.index + 1
-        test_truth['max'] = test_rul['max'] + test_truth['more']
-        test_truth.drop('more', axis=1, inplace=True)
+
+        # process test data
+        # We dont know when the test engine will fail
+
+        # find the max cycle on the testing data
+        test_rul = pd.DataFrame(test_df.groupby('id')['cycle'].max()).reset_index()
+        test_rul.columns = ['id', 'max'] # get the max cycle/ time step -> last cycle time step
+
+
+        # the test_truth is our ground truth for the test data
+        # test truth more column is the RUL at each time step
+        test_truth.columns = ['more'] # change column name
+        test_truth['id'] = test_truth.index + 1  # adjusting the row index to start from 1 instead of 0
+        test_truth['max'] = test_rul['max'] + test_truth['more']  # (predicted final cycle number) = max cycle + RUL at each time step to get the max RUL 
+        # so max there is the actual max RUL of the engine at cycle 0
+
+
+
+        # repeat the process
+        test_truth.drop('more', axis=1, inplace= True)
 
         test_df = test_df.merge(test_truth, on=['id'], how='left')
         test_y = pd.DataFrame(data=[test_df['max'] - test_df['cycle']]).T
@@ -105,29 +135,42 @@ class CMAPSS():
         test_engine_num = test_df['id'].nunique()
         logging.info("CMPDataIter:: iterator initialized (test engine number: {:})".format(test_engine_num))
 
-        # normailize both train and test data
 
+
+##############################################################################################################################
+        # normailize both train and test data to setting 1
+        # this selects the relevant feature columns (excluding id and cycle) from the dataset
         train_data = train_df.iloc[:, 2:]
         test_data = test_df.iloc[:, 2:]
 
+        # create a new dataframe to store the normalized data
         train_normalized = pd.DataFrame(columns=train_data.columns[3:])
         test_normalized = pd.DataFrame(columns=test_data.columns[3:])
 
-        scaler = MinMaxScaler()
+
+        scaler = MinMaxScaler() # helps ensure that features with larger ranges don't dominate the model's training
 
         grouped_train = train_data.groupby('setting1')
         grouped_test = test_data.groupby('setting1')
+        #  Grouping by setting1 allows you to normalize data specific to each operating condition, preserving the distribution of features within each group.
 
-        for train_idx, train in grouped_train:
 
-            scaled_train = scaler.fit_transform(train.iloc[:, 3:])
+        # question: since setting 1 or 2 both exist, how can we just group it by setting 1 ??
+
+
+        for train_idx, train in grouped_train: # group by setting1, so each train_idx might hv multiple train data rows
+
+            scaled_train = scaler.fit_transform(train.iloc[:, 3:]) # scale by each setting to make normalization consistent
             scaled_train_combine = pd.DataFrame(
                 data=scaled_train,
                 index=train.index,
                 columns=train_data.columns[3:])
             train_normalized = pd.concat([train_normalized, scaled_train_combine])
 
-            for test_idx, test in grouped_test:
+
+            # after normalizing the training data, we normalize the test data too
+            for test_idx, test in grouped_test: # for loop to find the right data setting
+                # normalize the test data based on their setting
                 if train_idx == test_idx:
                     scaled_test = scaler.transform(test.iloc[:, 3:])
                     scaled_test_combine = pd.DataFrame(
@@ -140,8 +183,12 @@ class CMAPSS():
         test_normalized = test_normalized.sort_index()
         # print('train_normalized is '+ str(np.shape(train_normalized)))
         # diff@xuqing
+
+        # normalize the setting data as well
         train_setting = scaler.fit_transform(train_df.iloc[:, 1:5])
         test_setting = scaler.transform(test_df.iloc[:, 1:5])
+
+
 
         train_setting = pd.DataFrame(
             data=train_setting,
@@ -152,7 +199,9 @@ class CMAPSS():
             data=test_setting,
             index=test_df.index,
             columns=test_df.columns[1:5])
+        
 
+        # normalize the target data as well
         train_y = train_y.apply(lambda x: (x / self.max_rul))  # norm_y = y/max_RUL
         test_y = test_y.apply(lambda x: (x / self.max_rul))  # norm_y = y/max_RUL
         # print(np.shape(test_y))
@@ -162,6 +211,7 @@ class CMAPSS():
             logging.info("CMPDataIter:: data includes multi operating conditions")
         else:
             logging.info("CMPDataIter:: data includes single operating conditions")
+
 
         # generate final data:
         # generate 9 x 15 windows to obtain train_x
@@ -177,6 +227,8 @@ class CMAPSS():
             seq_gen.extend(val)
             start_index = end_index
         train_x = list(seq_gen)
+
+        
 
         # generate 3 x 15 windows to obtain train_ops
         seq_gen = []
@@ -331,6 +383,7 @@ if __name__ == "__main__":
 
     ROOT_PATH = os.path.join("C:\\Monash\\Research_Intern\\RUL_brenchmark\\Frank-Wang-oss-GNN_RUL_Benchmarking\\Data_Process", "Datasets")
     data = CMAPSS(ROOT_PATH, data_set='FD004', max_rul=125, seq_len=50)
+
 
 
 # C:\Monash\Research_Intern\RUL_brenchmark\Frank-Wang-oss-GNN_RUL_Benchmarking\Data_Process\Datasets
